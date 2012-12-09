@@ -1,0 +1,4 @@
+Scripts
+=======
+
+Shell scripts utilitários
