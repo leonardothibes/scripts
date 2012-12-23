@@ -1,0 +1,313 @@
+#!/bin/bash
+# description: Firewall Basico
+#
+# chkconfig: 2345 80 30
+# processname: iptables
+# pidfile: /var/run/iptable.pid
+#
+# firewall-masq		This script sets up firewall rules for a machine
+#                       acting as a masquerading gateway
+#
+# IPTABLES configurating by Luiz Vigiato   09/04/03 for ADSL
+#                           vigiatoluiz@bol.com.br
+# ACRESCENTAR A LINHA ABAIXO EM /etc/syslog.conf
+# kern.=alert -/var/log/firewall.log
+#
+# Identificacao do programa iptables
+
+WIPT="/usr/sbin/iptables"
+
+INTRANET_PORT="eth0"
+INTERNET_PORT="ppp0"
+
+INTRANET=$(/sbin/ifconfig $INTRANET_PORT|grep inet |cut -d: -f2|cut -d\  -f2)
+INTERNET=$(/sbin/ifconfig $INTERNET_PORT|grep inet |cut -d: -f2|cut -d\  -f2)
+SERVER_DNS="$(cat /etc/resolv.conf |cut -d\  -f2) $INTRANET"
+echo ----------------------
+echo Intranet := $INTRANET_PORT - $INTRANET
+echo Internet := $INTERNET_PORT - $INTERNET
+echo DNS      := $SERVER_DNS
+echo ----------------------
+
+#---------------------------------------------------------------
+
+ANYWHERE="0.0.0.0/0"
+LOOPBACK="127.0.0.1/8" 
+TRACEROUTE_SRC="32769:35535"
+TRACEROUTE_DES="33434:33523"
+NFS_PORT="2049"
+PRIVPORTS="0:1023"
+UNPRIVPORTS="1024:65535"
+SSH_PORTS="1020:1023"
+XWINDOW_PORTS="6000:6063"
+SOCKS_PORT="1080" 
+OPEN_WINDOWS_PORT="2000"
+NFS_PORT="2049"
+
+#-----------------------------## Configuracao dos modulos
+
+# modprobe ip_contrack
+# modprobe ip_contrack_ftp
+# modprobe ipt_log
+# modprobe ipt_reject
+/sbin/modprobe iptable_nat
+/sbin/modprobe ip_tables
+/sbin/modprobe ipt_state
+/sbin/modprobe ipt_unclean
+/sbin/modprobe ipt_limit
+
+#------------------------------## Configuracao da protecao 
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo 1 > /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
+echo 1 > /proc/sys/net/ipv4/tcp_syncookies
+# echo 1 > /proc/sys/net/ipv4/ip_always_defrag
+echo 1 > /proc/sys/net/ipv4/icmp_ignore_bogus_error_responses
+
+for f in /proc/sys/net/ipv4/conf/*/rp_filter;           do echo 1 > $f; done
+for f in /proc/sys/net/ipv4/conf/*/accept_redirects;    do echo 1 > $f; done
+for f in /proc/sys/net/ipv4/conf/*/send_redirects;      do echo 1 > $f; done
+for f in /proc/sys/net/ipv4/conf/*/accept_source_route; do echo 1 > $f; done
+for f in /proc/sys/net/ipv4/conf/*/log_martians       ; do echo 1 > $f; done
+
+
+#------------------------------## Inicializacao Completa
+case "$1" in
+  start)
+
+    #--------------------------##  Limpando Chains
+
+    $WIPT -F
+    $WIPT -X
+    $WIPT -F FORWARD
+    $WIPT -F INPUT
+    $WIPT -F OUTPUT
+
+    #-----------------------------## Definicoes de configuracao
+    #----------------------------------------------------------
+
+    $WIPT -N log_drop
+    $WIPT -A log_drop -j LOG --log-level 1 --log-prefix DROPPED::
+    $WIPT -A log_drop -j DROP
+
+    $WIPT -N log_accept
+    $WIPT -A log_accept -m limit -j LOG --log-level 1 --log-prefix ACCEPTED::
+    $WIPT -A log_accept -j ACCEPT
+
+    $WIPT -N log_reject
+    $WIPT -A log_reject -j LOG --log-level 1 --log-prefix REJECTED::
+    $WIPT -A log_reject -j REJECT
+
+    $WIPT -N log_unclean
+    $WIPT -A log_unclean -j LOG --log-level 1 --log-prefix UNCLEANED::
+    $WIPT -A log_unclean -j DROP
+
+    $WIPT -N log_fragment
+    $WIPT -A log_fragment -j LOG --log-level 1 --log-prefix FRAGMENTO::
+    $WIPT -A log_fragment -j DROP
+
+    $WIPT -N log_spoofed
+    $WIPT -A log_spoofed -j LOG --log-level 1 --log-prefix SPOOFED::
+    $WIPT -A log_spoofed -j ACCEPT
+
+    $WIPT -N log_priv
+    $WIPT -A log_priv -j LOG --log-level 1 --log-prefix PRIV::
+    $WIPT -A log_priv -j ACCEPT
+
+    $WIPT -N log_ass_unpriv
+    $WIPT -A log_ass_unpriv -j LOG --log-level 1 --log-prefix ASS_UnPrivPort::
+    $WIPT -A log_ass_unpriv -j DROP
+
+    $WIPT -N log_traceroute
+    $WIPT -A log_traceroute -j LOG --log-level 1 --log-prefix TRACEROUTE::
+    $WIPT -A log_traceroute -j DROP
+
+    $WIPT -N log_in_new
+    $WIPT -A log_in_new -j LOG --log-level 1 --log-prefix LOG_NEW::
+    $WIPT -A log_in_new -j DROP
+
+    $WIPT -N log_in_invalid
+    $WIPT -A log_in_invalid -j LOG --log-level 1 --log-prefix LOG_INVALID::
+    $WIPT -A log_in_invalid -j DROP
+
+    # Habilitando serviços SSH/SMTP/POP/WWW/ ...
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 22  -j log_accept
+    $WIPT -A INPUT -p udp -i $INTRANET_PORT --dport 22  -j log_accept
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 25  -j log_accept
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 80  -j log_accept
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 110 -j log_accept
+
+    $WIPT -A FORWARD -p tcp -i $INTERNET_PORT --dport 22  -j log_accept
+    $WIPT -A FORWARD -p udp -i $INTRANET_PORT --dport 22  -j log_accept
+    $WIPT -A FORWARD -p tcp -i $INTERNET_PORT --dport 25  -j log_accept
+    $WIPT -A FORWARD -p tcp -i $INTERNET_PORT --dport 80  -j log_accept
+    $WIPT -A FORWARD -p tcp -i $INTERNET_PORT --dport 110 -j log_accept
+
+    ## REDIRECIONADOR PROXY
+
+    #$WIPT -A PREROUTING -t nat -i $INTRANET_PORT -p tcp  -j REDIRECT --to 192.168.0.1:3128
+    $WIPT -t nat -A PREROUTING  -i $INTRANET_PORT -p tcp --dport 80 -j REDIRECT --to-port 3128
+
+
+    ## LOOPBACK
+    $WIPT -A INPUT  -i lo -j ACCEPT
+    $WIPT -A OUTPUT -o lo -j ACCEPT
+
+    ## FRAGMENTOS 
+
+    $WIPT -A INPUT -i $INTERNET_PORT -m unclean -j log_unclean
+    $WIPT -A INPUT -f -i $INTERNET_PORT -j log_fragment
+
+    ## SPOOFINGS
+    SPO8="0 1 2 3 4 5 7 10 23 27 31 36 37 39 41 42 49 50 60 67 68 72 80 96 192 197"
+    spo32="169.254.0.0/16 192.0.2.0/24 218.0.0.0/7 220.0.0.0/6 224.0.0.0/3 224.0.0.0/4 224.0.0.0/5 0.0.0.0"
+   for i in $SPO8
+	do
+	$WIPT -A INPUT -i $INTERNET_PORT -s $i.0.0.0/8 -j log_spoofed
+    done
+    for i in $spo32
+	do 
+	$WIPT -A INPUT -i $INTERNET_PORT -s $i         -j log_spoofed
+    done
+
+    $WIPT -A INPUT -i $INTERNET_PORT -s $INTERNET      -j log_spoofed
+
+    #------------------------------## Bloqueios diversos.
+    # Kazaa
+
+    $WIPT -A INPUT -i $INTERNET_PORT -s 192.168.0.0/24 -j log_reject
+    $WIPT -A OUTPUT -o $INTERNET_PORT -d 192.168.0.0/24 -j log_reject
+    $WIPT -A INPUT -s 192.168.0.0/24 -i $INTERNET_PORT -j log_reject
+    $WIPT -A OUTPUT -d 192.168.0.0/24 -o $INTERNET_PORT -j log_reject
+    $WIPT -A FORWARD -d 192.168.0.107/32 -j log_drop
+    $WIPT -A FORWARD -d 192.168.0.136/32 -j log_drop
+    $WIPT -A FORWARD -d 192.168.0.137/32 -j log_drop
+    $WIPT -A FORWARD -d 192.168.0.110/32 -j log_drop
+    #$WIPT -A FORWARD -d 192.168.0.138/32 -j log_drop
+    $WIPT -A FORWARD -d 192.168.0.139/32 -j log_drop
+    $WIPT -A FORWARD -d 192.168.0.140/32 -j log_drop
+    
+    # $WIPT -A FORWARD -i $INTRANET_PORT   -j log_drop
+
+    $WIPT -A FORWARD -d 213.248.112.0/24 -j log_drop
+    SPO="1214,1436,1477,1492,4200,4422,4444,7777,8888"
+    $WIPT -A FORWARD -p tcp -m multiport --source-port $SPO -j log_reject
+    $WIPT -A FORWARD -p udp -m multiport --source-port $SPO -j log_reject
+    #$WIPT -A OUTPUT -o $INTERNET_PORT --source_port 1214 -j log_reject
+
+    # Habilitando DNS
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 53         -j log_accept
+    $WIPT -A INPUT -p udp -i $INTERNET_PORT --source-port 53   -j log_accept
+    $WIPT -A OUTPUT -p tcp -o $INTRANET_PORT --dport 53        -j log_accept
+    $WIPT -A OUTPUT -p udp -o $INTRANET_PORT --source-port 53  -j log_accept
+
+#    $WIPT -A OUTPUT -f -d $INTERNET -j DROP
+#    $WIPT -A FORWARD -p TCP --syn  -m limit --limit 1/s -j log_accept
+#    #$WIPT -A INPUT   -p TCP --syn --destination-port 80 -j log_accept
+#    #$WIPT -A INPUT   -p TCP --syn --destination-port 22 -j log_accept
+#    #$WIPT -A FORWARD -p TCP --syn --destination_port 25 -j log_accept
+#    #$WIPT -A FORWARD -p TCP --syn --destination_port 110 -j log_accept
+  
+# 05092003
+    $WIPT -A FORWARD -p icmp --icmp-type echo-request -m limit --limit 1/s -j ACCEPT
+    $WIPT -t nat -A POSTROUTING -o $INTERNET_PORT -j MASQUERADE
+    $WIPT -A INPUT -i $INTERNET_PORT -m state --state NEW,INVALID -j DROP
+    $WIPT -A FORWARD -i $INTERNET_PORT -m state --state NEW,INVALID -j DROP
+    #
+    #---------------------------- ## Servicos permitidos
+    for NSADDR in $SERVER_DNS
+    do
+	echo $NSADDR
+	$WIPT -A OUTPUT -o $INTERNET_PORT -p udp -s $INTERNET --sport $UNPRIVPORTS -d $NSADDR --dport 53 -j ACCEPT
+	$WIPT -A INPUT  -i $INTERNET_PORT -p udp -s $NSADDR --sport 53 -d $INTERNET --dport $UNPRIVPORTS -j ACCEPT
+	#$WIPT -A OUTPUT -o $INTERNET_PORT -p udp -s $INTERNET --sport $UNPRIVPORTS -d $NSADDR --dport 53 -j ACCEPT
+    done
+    #---------------------------##  Servicos Negados
+
+    #--------- Portas privilegiadas
+    $WIPT -A INPUT   -i $INTERNET_PORT -p tcp --dport $PRIVPORTS -j log_priv
+#    $WIPT -A OUTPUT  -o $INTERNET_PORT -p tcp --sport $PRIVPORTS -j log_reject
+    $WIPT -A INPUT   -i $INTERNET_PORT -p udp --dport $PRIVPORTS -j log_priv
+#    $WIPT -A OUTPUT  -o $INTERNET_PORT -p udp --sport $PRIVPORTS -j log_reject
+
+    #--------- Portas nao privilegiadas
+    $WIPT -A INPUT  -i $INTERNET_PORT -p tcp --dport $XWINDOW_PORTS --syn -j log_ass_unpriv
+    $WIPT -A OUTPUT -o $INTERNET_PORT -p tcp --dport $XWINDOW_PORTS --syn -j log_reject
+    $WIPT -A INPUT  -m multiport -i $INTERNET_PORT -p tcp --dport $SOCKS_PORT,$OPEN_WINDOWS_PORT,$NFS_PORT --syn -j log_ass_unpriv
+    $WIPT -A OUTPUT -m multiport -o $INTERNET_PORT -p tcp --dport $SOCKS_PORT,$OPEN_WINDOWS_PORT,$NFS_PORT --syn -j log_reject
+    $WIPT -A INPUT  -i $INTERNET_PORT -p udp --dport $NFS_PORT -j log_ass_unpriv
+    $WIPT -A OUTPUT -o $INTERNET_PORT -p udp --dport $NFS_PORT -j log_ass_unpriv
+
+    ##--------- Traceroute UDP
+    $WIPT -A INPUT -i $INTERNET_PORT -p udp --sport $TRACEROUTE_SRC --dport $TRACEROUTE_DES -j log_traceroute
+
+    #--------- Regra DSUST
+    $WIPT -A OUTPUT -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+    #$WIPT -A INPUT  -m state --state NEW -j log_in_new
+    $WIPT -A INPUT  -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $WIPT -A INPUT  -m state --state INVALID -j log_in_invalid
+    $WIPT -A OUTPUT -m limit -j LOG --log-level 1 --log-prefix  "Out.P.REJ"
+    $WIPT -A INPUT  -m limit -j LOG --log-level 1 --log-prefix  "Inp.P.DROP"
+    $WIPT -A FORWARD -m limit -j LOG --log-level 1 --log-prefix "Fw.P.DROP" 
+    logger "Firewall instalado"
+    echo   "Firewall total rodando "
+
+    #=============================================================#
+;;
+
+minimo)
+    #------------------------------##  Limpando Chains
+
+    $WIPT -F
+    $WIPT -X
+    $WIPT -F FORWARD
+    $WIPT -F INPUT
+    $WIPT -F OUTPUT
+
+    #-----------------------------## Definicoes de configuracao
+
+
+    $WIPT -t nat -A POSTROUTING -o $INTERNET_PORT -j MASQUERADE
+    #$WIPT -t nat -A POSTROUTING -o $INTRANET_PORT -j MASQUERADE
+
+    $WIPT -A FORWARD -p TCP --syn -m limit --limit 1/s -j ACCEPT
+    $WIPT -A FORWARD -i $INTERNET_PORT -m state --state ESTABLISHED,RELATED -j ACCEPT
+    $WIPT -A FORWARD -i $INTERNET_PORT -m state --state INVALID -j DROP
+
+    # Habilitando serviços SSH/SMTP/POP/WWW/ ...
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 22  -j ACCEPT
+    $WIPT -A INPUT -p tcp -i $INTRANET_PORT --dport 22  -j ACCEPT
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 25  -j ACCEPT
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 80  -j ACCEPT
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 110 -j ACCEPT
+    # Habilitando DNS
+    $WIPT -A INPUT -p tcp -i $INTERNET_PORT --dport 53  -j ACCEPT
+    $WIPT -A INPUT -p udp -i $INTERNET_PORT --source-port 53  -j ACCEPT
+    $WIPT -A OUTPUT -p tcp -o $INTRANET_PORT --dport 53  -j ACCEPT
+    $WIPT -A OUTPUT -p udp -o $INTRANET_PORT --source-port 53  -j ACCEPT
+    
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    echo Firewall MINIMO rodando
+;;
+status)
+   $WIPT -L
+;;
+stop)
+#------------------------------##  Limpando Chains
+
+    $WIPT -F
+    $WIPT -X
+    $WIPT -F FORWARD
+    $WIPT -F INPUT
+    $WIPT -F OUTPUT
+    $WIPT -L
+    echo Fierewall DESATIVADO
+#-----------------------------## Definicoes de configuracao
+
+;;
+
+*)
+   echo "Use : newfire1 (start/minimo/status/stop)"
+;;
+esac
+exit 0

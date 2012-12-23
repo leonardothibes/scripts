@@ -1,0 +1,172 @@
+#!/bin/bash
+
+########################################################################
+##                                                                    ## 
+##  SCRIPT DE FIREWALL - IPTABLES                                     ##
+##                                                                    ##
+## Desenvolvedor: Ronei Augustin                                      ##
+## Data: 24/07/2004                                                   ##
+## Solucao: FansTI Informatica Ltda                                   ##
+##                                                                    ##
+########################################################################
+
+
+### Definicoes ###
+
+IPT='/sbin/iptables'
+NET_IFACE='eth1'
+LAN_IFACE='eth0'
+LAN_RANGE='172.19.1.0/255.255.255.0'
+NET=200.176.36.192/32
+IF=eth1
+STOP=LR
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+echo 1 > /proc/sys/net/ipv4/ip_forward
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Ligar o IP Forwarding, que é a base do compartilhamento. Lembrando que esta opção deve estar habilitada no kernel na hora da compilação.
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+/sbin/modprobe ip_conntrack
+/sbin/modprobe ipt_MASQUERADE
+/sbin/modprobe ipt_LOG
+/sbin/modprobe iptable_nat
+/sbin/modprobe ip_nat_ftp
+/sbin/modprobe ip_conntrack_ftp
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Módulos do kernel necessários para o uso deste script.
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -F
+$IPT -Z
+$IPT -t nat -F
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Estes comandos servem para limpar todas as regras que possam ter na tabela do iptables.
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t nat -A PREROUTING -i eth1 -p tcp -m tcp --dport 5900 -j DNAT --to-destination 192.168.0.58
+$IPT -t nat -A PREROUTING -i eth1 -p udp -m udp --dport 5900 -j DNAT --to-destination 192.168.0.58
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Habilita o redirecionamento de Portas
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -P FORWARD DROP
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Política padrão para repassar pacotes: DROP. Isto faz com que nada seja repassado a não ser o que for listado neste script, o que vem a ser uma forma de tornar mais seguro.
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -A INPUT -i lo -s 0/0 -d 0/0 -j ACCEPT
+$IPT -t filter -A OUTPUT -o lo -s 0/0 -d 0/0 -j ACCEPT
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Permite que a interface LoopBack (lo) tenha tráfego livre.
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -A INPUT -i eth0 -m state --state NEW -j ACCEPT
+$IPT -t filter -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Aqui, deduz-se que você confia na sua rede interna e permite que ela faça novas conexões para qualquer lugar, assim como aceitar as conexões já estabelecidas (Stateful Inspection).
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -A FORWARD -d 0/0 -s $LAN_RANGE -o $NET_IFACE -j ACCEPT
+$IPT -t filter -A FORWARD -d $LAN_RANGE -s 0/0 -i $NET_IFACE -j ACCEPT
+$IPT -t nat -A POSTROUTING -o $NET_IFACE -j MASQUERADE
+$IPT -t filter -A INPUT -s $LAN_RANGE -d 0/0 -j ACCEPT
+$IPT -t filter -A OUTPUT -s $LAN_RANGE -d 0/0 -j ACCEPT
+$IPT -t filter -A OUTPUT -p icmp -s $LAN_RANGE -d 0/0 -j ACCEPT
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Estas linhas fazem com que a internet seja compartilhada para sua rede interna. As duas primeiras fazem com que os pacotes da rede interna repassados (FORWARD) através da internet (eth0) sejam aceitos. A próxima linha ativa o MASQUERADE na interface da Internet. As últimas tres linhas permitem que a rede interna vá para onde quiser, tanto internamente como externamente.
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -N LR
+$IPT -A LR -j LOG
+$IPT -A LR -j DROP
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Com estas tres linhas, criamos uma regra chamada LR, que descarta e loga pacotes (possivelmente no /var/log/messages). Esta será utilizada em regras que hajam necessidade de verificar IP's inoportunos.
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -P INPUT DROP
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Essa linha bloqueia tudo
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+if [ -e /proc/sys/net/ipv4/tcp_syncookies ]
+then
+echo 1 > /proc/sys/net/ipv4/tcp_syncookies
+fi
+
+if [ -e /proc/sys/net/ipv4/icmp_ignore_bogus_error_responses ]
+then
+echo 1 > /proc/sys/net/ipv4/icmp_ignore_bogus_error_responses
+fi
+
+if [ -e /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts ]
+then
+echo 1 > /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
+fi
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Proteções a nível de kernel que você deve usar para evitar maiores problemas com floods. Existem diversas outras opções a nível de kernel que se pode utilizar.
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p tcp  --dport 110 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p udp  --dport 110 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p tcp  --dport 25 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p udp  --dport 25 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p tcp  --dport 20 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p udp  --dport 20 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p tcp  --dport 21 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p udp  --dport 21 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p tcp  --dport 22 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p udp  --dport 22 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p tcp  --dport 80 -j ACCEPT
+$IPT -t filter -A INPUT -i eth1 -s 0/0 -p udp  --dport 80 -j ACCEPT
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Servicos liberados pelo Firewall, lembrando que so estaram liberados os servicos  que estiverem listados aqui
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -A INPUT -p tcp -m tcp -s 172.19.1.0/255.255.255.0 -d 172.19.1.1 --dport 3128 -j ACCEPT
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Redireciona o acesso para o Proxy
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -A INPUT -p icmp -s $NET -d 0/0 -j ACCEPT
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Permitir entrada de ICMP
+
+
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+$IPT -t filter -A INPUT -p icmp -m limit --limit 1/sec -m icmp --icmp-type 8 -j ACCEPT
+$IPT -t filter -A FORWARD -p icmp -m limit --limit 1/sec -m icmp --icmp-type 8 -j ACCEPT
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+# Bloquear Ping da Morte
+
+
+# Existem diversos outros serviços que sua máquina pode estar rodando. Para saber as portas que estão abertas e o aplicativo responsável, utilize o comando:
+
+# netstat -ptuln
+
+
