@@ -1,0 +1,11 @@
+.buildpath
+.DS_Store
+.project
+.vagrant
+.settings
+*.db
+*.bak
+*.swp
+*.properties
+composer.phar
+composer.lock
