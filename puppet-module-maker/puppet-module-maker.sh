@@ -1,3 +1,9 @@
 #!/bin/bash
 
-echo $1
+# Author
+WHO=`whoami`
+read -p "Input the author[${WHO}]: " AUTHOR
+[ -z ${AUTHOR} ] && AUTHOR=${WHO}
+# Author
+
+
