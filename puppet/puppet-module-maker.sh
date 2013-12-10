@@ -50,7 +50,7 @@ FILE="./${NAME}/Modulefile"
 echo "name '${AUTHOR}-${NAME}'"               > $FILE
 echo "version '0.0.0'"                       >> $FILE
 echo "author '${AUTHOR}'"                    >> $FILE
-echo "license 'Apache License, Version 2.0'" >> $FILE
+echo "license 'MIT'"                         >> $FILE
 echo "summary 'UNKNOWN'"                     >> $FILE
 echo "description '${DESCRIPTION}'"          >> $FILE
 echo "source 'git://github.com/${AUTHOR}/puppet-${NAME}.git'"        >> $FILE
