@@ -48,7 +48,7 @@ echo "class ${NAME} {
 # Modulefile
 FILE="./${NAME}/Modulefile"
 echo "name '${AUTHOR}-${NAME}'"               > $FILE
-echo "version '0.0.0'"                       >> $FILE
+echo "version '1.0.0'"                       >> $FILE
 echo "author '${AUTHOR}'"                    >> $FILE
 echo "license 'MIT'"                         >> $FILE
 echo "summary 'UNKNOWN'"                     >> $FILE
