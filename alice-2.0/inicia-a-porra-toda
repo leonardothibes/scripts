@@ -1,0 +1,7 @@
+#!/bin/bash
+
+mysql.server start
+redis-server &
+rabbitmq-server &
+elasticsearch &
+go run /Users/leonardo/workspace/shop-front-queue-listener/src/main.go --config-file=/Users/leonardo/workspace/shop-front-queue-listener/config/parameters.yml
