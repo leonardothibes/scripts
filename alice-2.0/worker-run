@@ -1,5 +1,10 @@
 #!/bin/bash
 
 clear
-SFQL=$HOME/workspace/shop-worker
-go run $SFQL/src/main.go --config-file=$SFQL/config/parameters.yml &
+
+redis-cli flushall
+curl --request DELETE http://127.0.0.1:9200/catalog/products
+
+WORKER=$HOME/workspace/shop-worker
+go run $WORKER/src/main.go --config-file=$WORKER/config/parameters.yml
+#go run $WORKER/src/main.go --config-file=$WORKER/config/parameters.yml --importers=brands,categories,products
