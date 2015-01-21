@@ -1,5 +1,5 @@
 #!/bin/bash
 
 clear
-SFQL=$HOME/workspace/shop-front-queue-listener
+SFQL=$HOME/workspace/linioit/shop-front-queue-listener
 go run $SFQL/src/main.go --config-file=$SFQL/config/parameters.yml &

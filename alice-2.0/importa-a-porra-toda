@@ -1,0 +1,9 @@
+#!/bin/bash
+
+clear
+
+redis-cli flushall
+curl --request DELETE http://127.0.0.1:9200/catalog/products
+
+WORKER=$HOME/workspace/linioit/shop-worker
+go run $WORKER/src/main.go --config-file=$WORKER/config/parameters.yml
