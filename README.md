@@ -1,4 +1,4 @@
 Scripts
 =======
 
-Shell scripts utilitários
+My personal shell scripts
