@@ -15,9 +15,10 @@ git remote rename origin bitbucket
 git remote add origin ${TO}
 git remote rm bitbucket
 
+git push origin master
 for BRANCH in $(git branch)
 do
-    if [ ! -d ${BRANCH} ] && [ ! -f ${BRANCH} ]; then
+    if [ ${BRANCH} != "master" ] && [ ! -d ${BRANCH} ] && [ ! -f ${BRANCH} ]; then
         git push origin ${BRANCH}
     fi
 done
