@@ -13,6 +13,7 @@ echo ""
 
 git remote rename origin bitbucket
 git remote add origin ${TO}
+git remote rm bitbucket
 
 for BRANCH in $(git branch)
 do
@@ -27,11 +28,6 @@ do
 done
 
 echo ""
-
-read -p "Remove old origin? (y/N) " REMOVE
-if [ "${REMOVE}" == "y" ] || [ "${REMOVE}" == "Y" ]; then
-    git remote rm bitbucket
-fi
 
 echo ""
 echo "Done!"
