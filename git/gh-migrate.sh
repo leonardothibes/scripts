@@ -26,6 +26,8 @@ do
     git push origin ${TAG}
 done
 
+echo ""
+
 read -p "Remove old origin? (y/N) " REMOVE
 if [ "${REMOVE}" == "y" ] || [ "${REMOVE}" == "Y" ]; then
     git remote rm bitbucket
